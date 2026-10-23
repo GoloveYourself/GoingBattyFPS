@@ -14,7 +14,7 @@ namespace GoingBatty
     /// Only the left half is authored; the right half is a mirror, so Capture the Box is fair.
     /// To make a new map, add another layout and point Build() at it.
     /// </summary>
-    public class MapBuilder
+    public partial class MapBuilder
     {
         public const float Cell = 1.5f;
         public const float Ceiling = 4.2f;

@@ -64,6 +64,7 @@ namespace GoingBatty
             {
                 var p = AddPlayer(Net.LocalId, Settings.PlayerName);
                 SendWelcome(p);
+                HostSyncBots();
             }
             else
             {
@@ -142,6 +143,80 @@ namespace GoingBatty
             Players.Remove(p.Slot);
             AddFeedAll(p.Name + " left");
             BroadcastRoster();
+            HostSyncBots();
+        }
+
+        // ------------------------------------------------------------------ host: bots
+
+        const ulong BotIdBase = 1UL << 40;
+        static readonly string[] BotNames = { "Echo", "Squeak", "Flutter", "Nyx", "Pip", "Guano", "Wingnut", "Radar", "Dusk", "Chirp" };
+
+        public int HumanCount => Players.Values.Count(p => !p.IsBot);
+
+        /// <summary>Host: add or remove bots so there are min(Rules.Bots, 8 - humans) of them.</summary>
+        public void HostSyncBots()
+        {
+            if (!Net.IsHost) return;
+            int want = Mathf.Clamp(Rules.Bots, 0, Mathf.Max(0, Tuning.MaxPlayers - HumanCount));
+            var bots = Players.Values.Where(p => p.IsBot).OrderByDescending(p => p.Slot).ToList();
+            bool changed = false;
+            for (int i = 0; i < bots.Count - want; i++)
+            {
+                var b = bots[i];
+                for (int t = 0; t < 2; t++)
+                    if (Boxes[t].Status == BoxStatus.Carried && Boxes[t].CarrierSlot == b.Slot) DropBox(t, b.Pos);
+                Players.Remove(b.Slot);
+                changed = true;
+            }
+            for (int i = bots.Count; i < want; i++)
+            {
+                string free = BotNames.FirstOrDefault(n => !Players.Values.Any(p => p.Name == "Bot " + n));
+                string name = "Bot " + (free ?? "Bat");
+                byte slot = 0;
+                while (Players.ContainsKey(slot)) slot++;
+                var b = AddPlayer(BotIdBase + slot, name);
+                b.IsBot = true;
+                if (Phase == Phase.Playing) b.RespawnAt = Time.time + 0.5f;
+                changed = true;
+            }
+            if (changed) BroadcastRoster();
+        }
+
+        /// <summary>Host: a bot fires its blunderbuss. Hits are checked against everyone's hitboxes on the host.</summary>
+        public void HostBotShoot(PlayerInfo bot, Vector3 origin, Vector3 dir)
+        {
+            if (!Net.IsHost || !bot.Alive || Phase != Phase.Playing) return;
+            int seed = Random.Range(int.MinValue, int.MaxValue);
+            var victims = new HashSet<byte>();
+            foreach (var d in LocalPlayer.PelletDirections(dir, seed))
+            {
+                if (!Physics.Raycast(origin, d, out var hit, Tuning.WeaponRange, ~0, QueryTriggerInteraction.Ignore)) continue;
+                var rp = hit.collider.GetComponentInParent<RemotePlayer>();
+                if (rp != null && rp.Slot != bot.Slot) victims.Add(rp.Slot);
+                else if (Local != null && hit.collider.transform.IsChildOf(Local.transform)) victims.Add(LocalSlot);
+            }
+            var w = new ByteWriter(40).U8((byte)M.PShot).U8(bot.Slot).V3(origin).V3(dir).I32(seed);
+            Net.ToAll(w.ToArray(), true);
+            BotDirector.I?.NoteShot(bot.Slot);
+            foreach (var v in victims) TryKill(bot, v, origin);
+        }
+
+        /// <summary>Host: a bot "speaks" a sonar pulse that everyone sees.</summary>
+        public void HostBotSonar(PlayerInfo bot, Vector3 origin, Vector3 dir, float strength)
+        {
+            if (!Net.IsHost || !bot.Alive || Phase != Phase.Playing) return;
+            var w = new ByteWriter(40).U8((byte)M.PSonar).U8(bot.Slot).V3(origin).V3(dir).F32(strength);
+            Net.ToAll(w.ToArray(), true);
+            BotDirector.I?.NoteSonar(origin, dir, strength, bot.Slot);
+        }
+
+        /// <summary>Host: publish a bot's position to everyone.</summary>
+        public void HostBotState(PlayerInfo bot, Vector3 pos, float yaw, Vector3 vel)
+        {
+            bot.Pos = pos;
+            bot.Yaw = yaw;
+            var w = new ByteWriter(48).U8((byte)M.PState).U8(bot.Slot).V3(pos).F32(yaw).F32(0f).V3(vel);
+            Net.ToAll(w.ToArray(), false);
         }
 
         // ------------------------------------------------------------------ host: messages in
@@ -181,6 +256,7 @@ namespace GoingBatty
                     var origin = r.V3(); var dir = r.V3(); float strength = Mathf.Clamp01(r.F32());
                     var w = new ByteWriter(40).U8((byte)M.PSonar).U8(p.Slot).V3(origin).V3(dir).F32(strength);
                     Net.ToAll(w.ToArray(), true, sender);
+                    BotDirector.I?.NoteSonar(origin, dir, strength, p.Slot);
                     break;
                 }
                 case M.Blast:
@@ -200,6 +276,7 @@ namespace GoingBatty
                     for (int i = 0; i < n; i++) claimed.Add(r.U8());
                     var w = new ByteWriter(40).U8((byte)M.PShot).U8(p.Slot).V3(origin).V3(dir).I32(seed);
                     Net.ToAll(w.ToArray(), true, sender);
+                    BotDirector.I?.NoteShot(p.Slot);
                     foreach (var victim in claimed) TryKill(p, victim, origin);
                     break;
                 }
@@ -216,10 +293,21 @@ namespace GoingBatty
                 Reject(sender, $"Version mismatch: the host is on v{Application.version}, you are on v{version}. Update the game and try again.");
                 return;
             }
-            if (Players.Count >= Tuning.MaxPlayers)
+            if (HumanCount >= Tuning.MaxPlayers)
             {
                 Reject(sender, "Lobby is full.");
                 return;
+            }
+            // Humans take priority over bots: drop a bot first if the lobby is full of them.
+            if (Players.Count >= Tuning.MaxPlayers)
+            {
+                var bot = Players.Values.Where(b => b.IsBot).OrderByDescending(b => b.Slot).FirstOrDefault();
+                if (bot != null)
+                {
+                    for (int t = 0; t < 2; t++)
+                        if (Boxes[t].Status == BoxStatus.Carried && Boxes[t].CarrierSlot == bot.Slot) DropBox(t, bot.Pos);
+                    Players.Remove(bot.Slot);
+                }
             }
             var p = AddPlayer(sender, name);
             SendWelcome(p);
@@ -246,7 +334,7 @@ namespace GoingBatty
         {
             w.U8((byte)Players.Count);
             foreach (var p in Players.Values)
-                w.U8(p.Slot).U64(p.ClientId).Str(p.Name).U8(p.Team).I32(p.Score).I32(p.Deaths).Bool(p.Alive);
+                w.U8(p.Slot).U64(p.ClientId).Str(p.Name).U8(p.Team).I32(p.Score).I32(p.Deaths).Bool(p.Alive).Bool(p.IsBot);
             w.I32(TeamScore[0]).I32(TeamScore[1]);
         }
 
@@ -529,6 +617,7 @@ namespace GoingBatty
                 p.Score = r.I32();
                 p.Deaths = r.I32();
                 p.Alive = r.Bool();
+                p.IsBot = r.Bool();
                 seen.Add(slot);
             }
             TeamScore[0] = r.I32();
@@ -591,6 +680,7 @@ namespace GoingBatty
                     break;
                 case M.Rules:
                     Rules.Read(r);
+                    if (Net.IsHost) HostSyncBots();
                     break;
                 case M.PState:
                 {

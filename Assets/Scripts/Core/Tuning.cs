@@ -53,6 +53,13 @@ namespace GoingBatty
         public const float BoxPickupRadius = 1.5f;
         public const float BoxAutoReturn = 20f;
 
+        // ---- Bots (AI players, run by the host) ----
+        public const float BotSpeed = 7.0f;         // a bit slower than a running human
+        public const float BotReaction = 0.45f;     // seconds of seeing you before the first shot
+        public const float BotAimErrorDeg = 3.0f;   // random aim wobble; lower = deadlier
+        public const float BotHearingRange = 6f;    // they notice you this close even without sonar
+        public const float BotMemory = 3.0f;        // seconds they remember where you were revealed
+
         // ---- Networking ----
         public const float StateSendRate = 20f;
         public const int MaxPlayers = 8;

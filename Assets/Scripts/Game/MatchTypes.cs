@@ -12,12 +12,15 @@ namespace GoingBatty
         public static readonly int[] KillOptions = { 5, 10, 15, 20, 25, 30 };
         public static readonly int[] CaptureOptions = { 3, 5, 7, 10 };
         public static readonly int[] TimeOptions = { 2, 5, 10, 0 }; // minutes, 0 = no limit
+        public static readonly int[] BotOptions = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
         public GameMode Mode = GameMode.Deathmatch;
         public int KillTarget = 15;
         public int CaptureTarget = 3;
         public int DmTimeMinutes = 5;
         public int CtbTimeMinutes = 5;
+        /// <summary>AI players the host adds. Humans always take priority: bots never push the lobby past 8.</summary>
+        public int Bots = 0;
 
         public int TimeMinutes => Mode == GameMode.Deathmatch ? DmTimeMinutes : CtbTimeMinutes;
         public int Target => Mode == GameMode.Deathmatch ? KillTarget : CaptureTarget;
@@ -26,7 +29,7 @@ namespace GoingBatty
 
         public void Write(ByteWriter w)
         {
-            w.U8((byte)Mode).U8((byte)KillTarget).U8((byte)CaptureTarget).U8((byte)DmTimeMinutes).U8((byte)CtbTimeMinutes);
+            w.U8((byte)Mode).U8((byte)KillTarget).U8((byte)CaptureTarget).U8((byte)DmTimeMinutes).U8((byte)CtbTimeMinutes).U8((byte)Bots);
         }
 
         public void Read(ByteReader r)
@@ -36,6 +39,7 @@ namespace GoingBatty
             CaptureTarget = r.U8();
             DmTimeMinutes = r.U8();
             CtbTimeMinutes = r.U8();
+            Bots = r.U8();
         }
 
         public static int Cycle(int[] options, int current, int dir)
@@ -56,6 +60,7 @@ namespace GoingBatty
         public int Score;
         public int Deaths;
         public bool Alive;
+        public bool IsBot;
 
         // Host-side bookkeeping
         public Vector3 Pos;

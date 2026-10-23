@@ -13,6 +13,7 @@ Built in **Unity 6.3 LTS** (6000.3.x) for Windows PC.
 | **Shoot** | One-shot-kill blunderbuss (left click), ~1 s cooldown. Right click = blast-jump. Gunshots briefly reveal the shooter. |
 | **Move** | Fast, Quake-style: bunny hop (hold Space), air strafe, blast-jump — tuned to feel like Ratz Instagib. Respawn in 2 s. |
 | **Lobbies** | Up to 8 players, start with any number. Public, or Private with a password. Set your player name and lobby name; friends find you by name (or join code). |
+| **Bots** | The host can add 0–7 AI bots in the lobby. They fill empty slots only — when a real player joins, a bot leaves to make room. Bots play blind too: they only know where you are if a sonar pulse, your gunshot, or the Box reveals you (or you're very close). Difficulty: `Bot*` values in `Tuning.cs`. |
 
 ### Modes
 - **Deathmatch** — 1 point per elimination. First to the target wins, or the most when time runs out. Targets: 5/10/**15**/20/25/30. Time: 2/**5**/10 min/No limit.
@@ -53,7 +54,8 @@ Assets/Scripts/
   Net/     Net (message bus over Netcode), ILobbyService + UgsLobbyService (Unity Lobby/Relay)
   Audio/   MicInput (capture, loudness, voice frames), VoiceOut (3D proximity chat), Sfx (synthesized sounds + elevator music)
   Game/    GameSession (host-authoritative rules, both modes), LocalPlayer (movement/weapon/sonar),
-           RemotePlayer, SonarSystem (echo visuals/ghosts), MapBuilder (ASCII map), BoxObjective
+           RemotePlayer, SonarSystem (echo visuals/ghosts), MapBuilder + MapNav (ASCII map, bot pathfinding),
+           BotDirector (AI bots, host-side), BoxObjective
   UI/      UIRoot (menus, lobby, options, HUD)
   Update/  UpdateChecker (GitHub release check + self-update), BuildInfo (repo name)
 Assets/Editor/  ProjectSetup (auto settings/scene), Builder (CI build), ServicesConfig (Unity Cloud IDs)

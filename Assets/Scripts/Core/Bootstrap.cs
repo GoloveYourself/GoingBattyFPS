@@ -65,6 +65,7 @@ namespace GoingBatty
             var session = gameObject.AddComponent<GameSession>();
             session.Map = map;
             session.CreateBoxViews();
+            gameObject.AddComponent<BotDirector>();
 
             gameObject.AddComponent<UIRoot>();
             gameObject.AddComponent<UpdateChecker>();

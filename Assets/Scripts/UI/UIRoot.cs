@@ -493,12 +493,19 @@ namespace GoingBatty
                     d => edit.CtbTimeMinutes = MatchSettings.Cycle(MatchSettings.TimeOptions, edit.CtbTimeMinutes, d));
                 GUILayout.Label("Grab the enemy team's Box (it plays elevator music — everyone can see it and its carrier) and bring it back to your base.", _dim);
             }
+            GUILayout.Space(10);
+            int botRoom = Mathf.Max(0, Tuning.MaxPlayers - gs.HumanCount);
+            string botLabel = rules.Bots == 0 ? "None" : rules.Bots <= botRoom ? rules.Bots.ToString() : $"{rules.Bots} ({botRoom} fit)";
+            changed |= Picker("Bots", botLabel, host,
+                d => edit.Bots = MatchSettings.Cycle(MatchSettings.BotOptions, edit.Bots, d));
+            GUILayout.Label("AI players fill empty slots. Real players always get priority — a bot leaves to make room when someone joins.", _dim);
+
             if (changed) gs.HostSetRules(edit);
 
             GUILayout.FlexibleSpace();
             if (host)
             {
-                if (gs.Players.Count < 2) GUILayout.Label("You can start alone to practise, or wait for friends.", _dim);
+                if (gs.Players.Count < 2) GUILayout.Label("You can start alone to practise, add bots, or wait for friends.", _dim);
                 if (Btn("Start match", GUILayout.Width(300))) gs.HostStartMatch();
             }
             else GUILayout.Label("Waiting for the host to start…", _body);
@@ -516,7 +523,7 @@ namespace GoingBatty
             var gs = GameSession.I;
             GUILayout.BeginHorizontal();
             string you = p.Slot == gs.LocalSlot ? "  (you)" : "";
-            string hostTag = p.ClientId == Unity.Netcode.NetworkManager.ServerClientId ? "  ★ host" : "";
+            string hostTag = p.IsBot ? "  (bot)" : p.ClientId == Unity.Netcode.NetworkManager.ServerClientId ? "  ★ host" : "";
             var rp = gs.Remote(p.Slot);
             bool talking = (rp != null && rp.Voice.Loudness > 0.05f) || (p.Slot == gs.LocalSlot && MicInput.I != null && MicInput.I.Transmitting);
             GUILayout.Label((talking ? "◉ " : "   ") + p.Name + you + hostTag, _body, GUILayout.Width(440));
@@ -527,7 +534,7 @@ namespace GoingBatty
         static MatchSettings Copy(MatchSettings s) => new MatchSettings
         {
             Mode = s.Mode, KillTarget = s.KillTarget, CaptureTarget = s.CaptureTarget,
-            DmTimeMinutes = s.DmTimeMinutes, CtbTimeMinutes = s.CtbTimeMinutes,
+            DmTimeMinutes = s.DmTimeMinutes, CtbTimeMinutes = s.CtbTimeMinutes, Bots = s.Bots,
         };
 
         bool Picker(string label, string value, bool editable, System.Action<int> change)
@@ -756,7 +763,7 @@ namespace GoingBatty
                 {
                     GUILayout.BeginHorizontal();
                     var style = p.Slot == gs.LocalSlot ? new GUIStyle(_body) { normal = { textColor = Accent } } : _body;
-                    GUILayout.Label(p.Name, style, GUILayout.Width(520));
+                    GUILayout.Label(p.IsBot ? p.Name + "  (bot)" : p.Name, style, GUILayout.Width(520));
                     GUILayout.Label(p.Score.ToString(), style, GUILayout.Width(140));
                     GUILayout.Label(p.Deaths.ToString(), style, GUILayout.Width(140));
                     GUILayout.EndHorizontal();
