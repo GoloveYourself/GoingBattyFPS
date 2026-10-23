@@ -7,7 +7,7 @@ namespace GoingBatty.EditorTools
     /// </summary>
     public static class ServicesConfig
     {
-        public const string CloudProjectId = "";
+        public const string CloudProjectId = "18192970-9feb-441a-b424-2331fb81d7a5";
         public const string OrganizationId = "";
         public const string ProjectName = "Going Batty";
     }
