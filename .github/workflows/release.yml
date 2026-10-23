@@ -1,0 +1,92 @@
+# Builds the Windows game and publishes a GitHub Release whenever the VERSION file
+# holds a version that hasn't been released yet. Every installed copy of the game checks
+# the latest release on startup and offers to update.
+#
+# One-time setup (repo Settings > Secrets and variables > Actions):
+#   UNITY_EMAIL     - your Unity account email
+#   UNITY_PASSWORD  - your Unity account password
+#   UNITY_LICENSE   - contents of your Unity license file (.ulf). See README "Automatic builds".
+
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: |
+          VERSION="$(tr -d ' \r\n' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$VERSION is already released - bump VERSION to ship an update."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check Unity secrets
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          if [ -z "${{ secrets.UNITY_LICENSE }}" ] || [ -z "${{ secrets.UNITY_EMAIL }}" ] || [ -z "${{ secrets.UNITY_PASSWORD }}" ]; then
+            echo "::error::Unity secrets are missing. Add UNITY_LICENSE, UNITY_EMAIL and UNITY_PASSWORD (see README, 'Automatic builds')."
+            exit 1
+          fi
+
+      - uses: actions/cache@v4
+        if: steps.ver.outputs.exists == 'false'
+        with:
+          path: Library
+          key: Library-Windows-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: Library-Windows-
+
+      - name: Build Windows
+        if: steps.ver.outputs.exists == 'false'
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneWindows64
+          buildName: GoingBatty
+          buildMethod: GoingBatty.EditorTools.Builder.BuildWindows
+          versioning: None
+
+      - name: Package
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          sudo chown -R "$USER" build || true
+          cd build/StandaloneWindows64
+          rm -rf *_BurstDebugInformation_DoNotShip *_BackUpThisFolder_ButDontShipItWithYourGame
+          zip -r -q "$GITHUB_WORKSPACE/GoingBatty-Windows.zip" .
+          ls -la "$GITHUB_WORKSPACE/GoingBatty-Windows.zip"
+
+      - name: Publish release
+        if: steps.ver.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Going Batty v${{ steps.ver.outputs.version }}
+          body: ${{ github.event.head_commit.message }}
+          files: GoingBatty-Windows.zip
+          make_latest: true
